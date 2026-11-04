@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>libcudf migration status</title>
+<style>
+:root {
+  --bg: #fafaf9; --panel: #fff; --text: #1c1917; --muted: #6b6560; --line: #e4e1dc;
+  --accent: #0b5cad; --hover: #f2f0ec;
+  --unmigrated: #d55e00; --partial: #e69f00; --in_progress: #0072b2;
+  --migrated: #009e73; --not_applicable: #b9b4ad;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161514; --panel: #1f1e1c; --text: #ece9e4; --muted: #9a948c; --line: #34312d;
+    --accent: #6cb4f0; --hover: #2a2825;
+    --unmigrated: #f07a1f; --partial: #f0b429; --in_progress: #4aa8e8;
+    --migrated: #22c29b; --not_applicable: #5d5851;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161514; --panel: #1f1e1c; --text: #ece9e4; --muted: #9a948c; --line: #34312d;
+  --accent: #6cb4f0; --hover: #2a2825;
+  --unmigrated: #f07a1f; --partial: #f0b429; --in_progress: #4aa8e8;
+  --migrated: #22c29b; --not_applicable: #5d5851;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1240px; margin: 0 auto; padding: 20px 16px 60px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, .mono { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.muted { color: var(--muted); }
+.top { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+button, select, input[type=search] { font: inherit; color: var(--text); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
+button { cursor: pointer; }
+button:hover { background: var(--hover); }
+button[aria-pressed=true], button.on { border-color: var(--accent); color: var(--accent); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; margin: 18px 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.card .pct { font-size: 34px; font-weight: 650; letter-spacing: -0.02em; }
+.card .sub { color: var(--muted); font-size: 13px; }
+.bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--line); }
+.bar.big { height: 16px; border-radius: 8px; margin: 10px 0; }
+.bar > i { display: block; height: 100%; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; cursor: default; }
+.dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.s-unmigrated { background: var(--unmigrated); } .s-partial { background: var(--partial); }
+.s-in_progress { background: var(--in_progress); } .s-migrated { background: var(--migrated); }
+.s-not_applicable { background: var(--not_applicable); }
+nav.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+nav.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 14px; }
+nav.tabs button[aria-selected=true] { border-bottom-color: var(--accent); color: var(--accent); font-weight: 600; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.toolbar input[type=search] { min-width: 260px; }
+.chips { display: inline-flex; gap: 4px; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-size: 12.5px; user-select: none; }
+.chip[aria-pressed=true] { border-color: var(--accent); background: var(--hover); font-weight: 600; }
+.chip[aria-pressed=false] { color: var(--muted); text-decoration: line-through; border-style: dashed; }
+.chip[aria-pressed=false] .dot { background: transparent; box-shadow: inset 0 0 0 2px var(--not_applicable); }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; position: sticky; top: 0; background: var(--panel); }
+tr.row { cursor: pointer; } tr.row:hover { background: var(--hover); }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cell { display: flex; align-items: center; gap: 10px; min-width: 210px; }
+.cell .bar { flex: 1; min-width: 90px; }
+.cell .count { font-size: 12px; color: var(--muted); white-space: nowrap; min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+.twisty { display: inline-block; width: 14px; color: var(--muted); }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; color: #fff; white-space: nowrap; }
+.pill.s-partial, .pill.s-not_applicable { color: #1c1917; }
+.fn { padding-left: 34px; }
+.tablewrap { overflow-x: auto; }
+dialog { max-width: 860px; width: calc(100% - 32px); border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel); color: var(--text); padding: 18px; }
+dialog::backdrop { background: rgba(0,0,0,.45); }
+.issue { padding: 4px 0; border-top: 1px solid var(--line); }
+.sig { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+.flag { font-size: 11.5px; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); margin-left: 4px; }
+.pager { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+details { margin: 8px 0; }
+.notes li { margin: 5px 0; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div>
+      <h1>libcudf migration status</h1>
+      <div class="muted" id="meta"></div>
+    </div>
+    <button id="theme" title="Toggle light / dark">Theme</button>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="files" aria-selected="true">Files</button>
+    <button role="tab" data-tab="functions" aria-selected="false">Functions</button>
+    <button role="tab" data-tab="prs" aria-selected="false">Open PRs</button>
+    <button role="tab" data-tab="notes" aria-selected="false">About this report</button>
+  </nav>
+
+  <section id="tab-files"></section>
+  <section id="tab-functions" hidden></section>
+  <section id="tab-prs" hidden></section>
+  <section id="tab-notes" hidden></section>
+</main>
+<dialog id="detail"></dialog>
+
+<script>
+const DATA = /*__DATA__*/null;
+
+const STATES = ["unmigrated", "partial", "in_progress", "migrated", "not_applicable"];
+const LABEL = {
+  unmigrated: "Unmigrated", partial: "Partially migrated", in_progress: "In progress (open PR)",
+  migrated: "Migrated", not_applicable: "Not applicable",
+};
+const MIGRATIONS = {
+  mr: { title: "cudf::memory_resources", ref: "https://github.com/NVIDIA/cudf/issues/24268",
+        blurb: "rmm::device_async_resource_ref → cudf::memory_resources" },
+  buf: { title: "cuda::device_buffer", ref: "https://github.com/rapidsai/build-planning/issues/321",
+         blurb: "rmm::device_buffer / device_uvector → cuda::device_buffer" },
+};
+const KIND_LABEL = {
+  old_mr_param: "takes rmm::device_async_resource_ref",
+  current_resource: "uses get_current_device_resource_ref()",
+  callee_old_mr: "passes its mr to a callee that is not migrated",
+  callee_default_mr: "calls a function without passing its mr (callee uses its default)",
+  rmm_buffer: "references rmm::device_buffer / device_uvector",
+  callee_returns_rmm: "calls a function that still returns an rmm buffer type",
+};
+
+const $ = (sel, root = document) => root.querySelector(sel);
+function el(tag, attrs = {}, ...kids) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) node.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) {
+    if (kid == null || kid === false) continue;
+    node.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  }
+  return node;
+}
+const fmt = (n) => n.toLocaleString();
+const blobUrl = (path, line) => `${DATA.repo_url}/blob/${DATA.base.sha}/${path}${line ? "#L" + line : ""}`;
+const pct = (a, b) => (b ? ((100 * a) / b).toFixed(1) + "%" : "–");
+const applicable = (c) => STATES.reduce((t, s) => t + (s === "not_applicable" ? 0 : c[s] || 0), 0);
+const prById = Object.fromEntries(DATA.prs.map((p) => [p.number, p]));
+const NEEDS = DATA.functions.filter((f) => f.needs_mr_param.length);
+const fnPrs = (f) => [...f.mr.prs.map((p) => p.number), ...f.buf.prs.map((p) => p.number), ...f.needs_mr_param_prs];
+
+function bar(counts, cls = "") {
+  const total = applicable(counts);
+  const b = el("div", { class: "bar " + cls });
+  if (!total) return b;
+  for (const s of STATES.slice(0, 4)) {
+    if (counts[s]) b.append(el("i", { class: "s-" + s, style: `width:${(100 * counts[s]) / total}%`, title: `${LABEL[s]}: ${counts[s]}` }));
+  }
+  return b;
+}
+function pill(status) { return el("span", { class: "pill s-" + status }, LABEL[status]); }
+function legend(counts) {
+  return el("div", { class: "legend" }, STATES.map((s) =>
+    el("span", {}, el("i", { class: "dot s-" + s }), `${LABEL[s]} `, el("b", {}, fmt(counts[s] || 0)))));
+}
+
+/* ---------- summary cards ---------- */
+function renderCards() {
+  const cards = $("#cards");
+  for (const [key, info] of Object.entries(MIGRATIONS)) {
+    const c = DATA.totals[key];
+    const total = applicable(c);
+    cards.append(el("div", { class: "card" },
+      el("h2", {}, el("a", { href: info.ref, target: "_blank", rel: "noopener" }, info.title)),
+      el("div", { class: "muted" }, info.blurb),
+      el("div", { class: "pct" }, pct(c.migrated, total), el("span", { class: "sub" }, `  migrated (${fmt(c.migrated)} of ${fmt(total)} applicable functions)`)),
+      bar(c, "big"),
+      legend(c),
+      el("div", { class: "sub", style: "margin-top:8px" },
+        `With open PRs landed: ${pct(c.migrated + c.in_progress, total)}. ${fmt(c.not_applicable)} functions are not applicable.`),
+      key === "mr" ? el("div", { class: "sub" }, `${fmt(NEEDS.length)} functions without an mr allocate on the current resource and need one; ${fmt(NEEDS.filter((f) => f.needs_mr_param_prs.length).length)} are addressed by open PRs.`) : null));
+  }
+}
+
+/* ---------- file tree ---------- */
+const state = {
+  tab: "files", sort: "name", metric: "mr", filter: "", hideDone: false,
+  expanded: new Set(["cpp", "cpp/include", "cpp/src"]), openFiles: new Set(),
+  fnPage: 0, fnSearch: "", fnStatus: { mr: new Set(STATES), buf: new Set(STATES) },
+  fnHideNA: true, fnPr: "", fnNeedsOnly: false,
+};
+const fnsByFile = new Map();
+for (const f of DATA.functions) {
+  if (!fnsByFile.has(f.file)) fnsByFile.set(f.file, []);
+  fnsByFile.get(f.file).push(f);
+}
+function buildTree() {
+  const root = { name: "", path: "", dirs: new Map(), files: [], mr: {}, buf: {} };
+  const add = (acc, c) => { for (const s of STATES) acc[s] = (acc[s] || 0) + c[s]; };
+  for (const file of DATA.files) {
+    const parts = file.path.split("/");
+    let node = root;
+    add(node.mr, file.mr); add(node.buf, file.buf);
+    parts.slice(0, -1).forEach((part, i) => {
+      if (!node.dirs.has(part)) node.dirs.set(part, { name: part, path: parts.slice(0, i + 1).join("/"), dirs: new Map(), files: [], mr: {}, buf: {} });
+      node = node.dirs.get(part);
+      add(node.mr, file.mr); add(node.buf, file.buf);
+    });
+    node.files.push({ name: parts[parts.length - 1], path: file.path, mr: file.mr, buf: file.buf });
+  }
+  return root;
+}
+const TREE = buildTree();
+const outstanding = (c) => (c.unmigrated || 0) + (c.partial || 0) + (c.in_progress || 0);
+const sortKey = (n) => state.sort === "name" ? null : outstanding(n[state.sort]);
+function cmp(a, b) {
+  const ka = sortKey(a), kb = sortKey(b);
+  if (ka === null || ka === kb) return a.name.localeCompare(b.name);
+  return kb - ka;
+}
+const matches = (path) => !state.filter || path.toLowerCase().includes(state.filter);
+const isDone = (n) => !outstanding(n.mr) && !outstanding(n.buf);
+
+function statCell(counts) {
+  const total = applicable(counts);
+  return el("td", {}, el("div", { class: "cell" }, bar(counts),
+    el("span", { class: "count", title: legendText(counts) }, total ? `${pct(counts.migrated, total)} · ${fmt(total)}` : "n/a")));
+}
+function legendText(c) { return STATES.map((s) => `${LABEL[s]}: ${c[s] || 0}`).join("\n"); }
+
+function treeRows(node, depth, out) {
+  const dirs = [...node.dirs.values()].sort(cmp);
+  const files = [...node.files].sort(cmp);
+  for (const d of dirs) {
+    if (state.hideDone && isDone(d)) continue;
+    const open = state.expanded.has(d.path) || !!state.filter;
+    const visible = !state.filter || hasMatch(d);
+    if (!visible) continue;
+    out.push(el("tr", { class: "row", onclick: () => { state.expanded.has(d.path) ? state.expanded.delete(d.path) : state.expanded.add(d.path); renderFiles(); } },
+      el("td", { style: `padding-left:${10 + depth * 18}px` }, el("span", { class: "twisty" }, open ? "▾" : "▸"), el("b", {}, d.name + "/")),
+      statCell(d.mr), statCell(d.buf)));
+    if (open) treeRows(d, depth + 1, out);
+  }
+  for (const f of files) {
+    if (!matches(f.path) || (state.hideDone && isDone(f))) continue;
+    const isOpen = state.openFiles.has(f.path);
+    out.push(el("tr", { class: "row", onclick: () => { isOpen ? state.openFiles.delete(f.path) : state.openFiles.add(f.path); renderFiles(); } },
+      el("td", { style: `padding-left:${10 + depth * 18}px` }, el("span", { class: "twisty" }, isOpen ? "▾" : "▸"), f.name),
+      statCell(f.mr), statCell(f.buf)));
+    if (isOpen) {
+      for (const fn of fnsByFile.get(f.path) || []) {
+        out.push(el("tr", { class: "row", onclick: () => showDetail(fn) },
+          el("td", { class: "fn mono" }, shortName(fn.name), el("span", { class: "muted" }, `  :${fn.line}`)),
+          el("td", {}, pill(fn.mr.status)), el("td", {}, pill(fn.buf.status))));
+      }
+    }
+  }
+}
+function hasMatch(dir) {
+  return dir.files.some((f) => matches(f.path)) || [...dir.dirs.values()].some(hasMatch);
+}
+const shortName = (n) => n.replace(/^cudf::/, "");
+
+function renderFiles() {
+  const root = $("#tab-files");
+  const search = el("input", { type: "search", placeholder: "Filter files by path…", value: state.filter,
+    oninput: (e) => { state.filter = e.target.value.toLowerCase(); renderFiles(); $("#tab-files input[type=search]").focus(); } });
+  search.setSelectionRange?.(search.value.length, search.value.length);
+  const sortSel = el("select", { onchange: (e) => { state.sort = e.target.value; renderFiles(); } },
+    [["name", "Sort: name"], ["mr", "Sort: most memory_resources work left"], ["buf", "Sort: most device_buffer work left"]]
+      .map(([v, t]) => el("option", { value: v, selected: v === state.sort }, t)));
+  const toolbar = el("div", { class: "toolbar" }, search, sortSel,
+    el("label", {}, el("input", { type: "checkbox", checked: state.hideDone, onchange: (e) => { state.hideDone = e.target.checked; renderFiles(); } }), " Hide files with nothing left"),
+    el("button", { onclick: () => { allDirs(TREE).forEach((p) => state.expanded.add(p)); renderFiles(); } }, "Expand all"),
+    el("button", { onclick: () => { state.expanded.clear(); renderFiles(); } }, "Collapse all"));
+  const rows = [];
+  treeRows(TREE, 0, rows);
+  root.replaceChildren(toolbar, el("div", { class: "tablewrap" }, el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, "Path"), el("th", {}, "memory_resources"), el("th", {}, "device_buffer"))),
+    el("tbody", {}, rows))),
+    el("p", { class: "muted" }, "Bars show migrated / partial / in-progress / unmigrated among applicable functions in each file (hover for counts). Click a file to list its functions; click a function for details."));
+}
+function allDirs(node, acc = []) { for (const d of node.dirs.values()) { acc.push(d.path); allDirs(d, acc); } return acc; }
+
+/* ---------- functions tab ---------- */
+function renderFunctions() {
+  const root = $("#tab-functions");
+  const chipRow = (key) => el("span", { class: "chips" }, el("span", { class: "muted" }, MIGRATIONS[key].title + ":"),
+    STATES.map((s) => el("button", { class: "chip", "aria-pressed": String(state.fnStatus[key].has(s)),
+      onclick: () => { const set = state.fnStatus[key]; set.has(s) ? set.delete(s) : set.add(s); state.fnPage = 0; renderFunctions(); } },
+      el("i", { class: "dot s-" + s }), LABEL[s])));
+  const search = el("input", { type: "search", placeholder: "Search name, signature or path…", value: state.fnSearch,
+    oninput: (e) => { state.fnSearch = e.target.value.toLowerCase(); state.fnPage = 0; renderFunctions(); const i = $("#tab-functions input[type=search]"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); } });
+  const prSel = el("select", { onchange: (e) => { state.fnPr = e.target.value; state.fnPage = 0; renderFunctions(); } },
+    el("option", { value: "" }, "Any PR"),
+    DATA.prs.filter((p) => p.functions_improved).map((p) => el("option", { value: p.number, selected: String(p.number) === String(state.fnPr) }, `#${p.number} (${p.functions_improved}) ${p.title.slice(0, 60)}`)));
+  const needsBox = el("label", {}, el("input", { type: "checkbox", checked: state.fnNeedsOnly, onchange: (e) => { state.fnNeedsOnly = e.target.checked; state.fnPage = 0; renderFunctions(); } }), " Only functions that need a new mr parameter");
+  const naBox = el("label", {}, el("input", { type: "checkbox", checked: state.fnHideNA, onchange: (e) => { state.fnHideNA = e.target.checked; state.fnPage = 0; renderFunctions(); } }), " Hide functions that are not applicable to both migrations");
+
+  const list = DATA.functions.filter((f) => {
+    if (!state.fnStatus.mr.has(f.mr.status) || !state.fnStatus.buf.has(f.buf.status)) return false;
+    if (state.fnNeedsOnly && !f.needs_mr_param.length) return false;
+    if (state.fnHideNA && f.mr.status === "not_applicable" && f.buf.status === "not_applicable" && !f.needs_mr_param.length) return false;
+    if (state.fnPr && !fnPrs(f).some((n) => String(n) === String(state.fnPr))) return false;
+    if (state.fnSearch && !(f.name + " " + f.signature + " " + f.file).toLowerCase().includes(state.fnSearch)) return false;
+    return true;
+  });
+  const per = 100, pages = Math.max(1, Math.ceil(list.length / per));
+  state.fnPage = Math.min(state.fnPage, pages - 1);
+  const slice = list.slice(state.fnPage * per, (state.fnPage + 1) * per);
+  const pager = el("div", { class: "pager" },
+    el("button", { disabled: state.fnPage === 0, onclick: () => { state.fnPage--; renderFunctions(); } }, "‹ Prev"),
+    `Page ${state.fnPage + 1} of ${pages} · ${fmt(list.length)} functions`,
+    el("button", { disabled: state.fnPage >= pages - 1, onclick: () => { state.fnPage++; renderFunctions(); } }, "Next ›"));
+  root.replaceChildren(
+    el("div", { class: "toolbar" }, search, prSel, naBox, needsBox),
+    el("div", { class: "toolbar" }, chipRow("mr")), el("div", { class: "toolbar" }, chipRow("buf")),
+    el("div", { class: "tablewrap" }, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Function"), el("th", {}, "File"), el("th", {}, "memory_resources"), el("th", {}, "device_buffer"))),
+      el("tbody", {}, slice.map((f) => el("tr", { class: "row", onclick: () => showDetail(f) },
+        el("td", { class: "mono" }, shortName(f.name)),
+        el("td", { class: "mono muted" }, f.file.replace(/^cpp\//, "") + ":" + f.line),
+        el("td", {}, pill(f.mr.status), f.needs_mr_param.length ? el("span", { class: "flag" }, f.needs_mr_param_prs.length ? "needs mr · PR open" : "needs mr") : null),
+        el("td", {}, pill(f.buf.status))))))),
+    pager);
+}
+
+/* ---------- detail dialog ---------- */
+function needsSection(fn) {
+  if (!fn.needs_mr_param.length) return null;
+  const kids = [el("h2", {}, "Needs a new mr parameter"),
+    el("div", { class: "muted" }, `Takes no mr but allocates on the current resource. ${fn.callers_with_mr} of ${fn.callers} resolved callers already hold an mr.`)];
+  if (fn.needs_mr_param_prs.length) {
+    kids.push(el("div", {}, "Addressed by open PR: ", fn.needs_mr_param_prs.map((n) => {
+      const pr = prById[n];
+      return el("span", {}, el("a", { href: pr.url, target: "_blank", rel: "noopener" }, `#${n}`), ` ${pr.title} `, pr.draft ? el("span", { class: "flag" }, "draft") : null, " ");
+    })));
+  }
+  for (const i of fn.needs_mr_param) {
+    kids.push(el("div", { class: "issue" }, el("a", { href: blobUrl(i.file, i.line), target: "_blank", rel: "noopener", class: "mono" }, `${i.file.replace(/^cpp\//, "")}:${i.line}`),
+      "  ", KIND_LABEL[i.kind] || i.kind, "  ", el("code", {}, i.detail)));
+  }
+  return el("div", { style: "margin-top:14px" }, kids);
+}
+function showDetail(fn) {
+  const dlg = $("#detail");
+  const section = (key) => {
+    const m = fn[key], info = MIGRATIONS[key];
+    const kids = [el("h2", {}, info.title, "  ", pill(m.status),
+      m.status === "in_progress" ? el("span", { class: "flag" }, `was ${LABEL[m.base_status].toLowerCase()}`) : null)];
+    if (m.prs.length) {
+      kids.push(el("div", {}, "Addressed by open PR: ", m.prs.map((p) => {
+        const pr = prById[p.number];
+        return el("span", {}, el("a", { href: pr.url, target: "_blank", rel: "noopener" }, `#${p.number}`), ` ${pr.title} `,
+          el("span", { class: "flag" }, `→ ${LABEL[p.after].toLowerCase()}`), pr.draft ? el("span", { class: "flag" }, "draft") : null, " ");
+      })));
+    }
+    if (!m.issues.length && m.status !== "not_applicable") kids.push(el("div", { class: "muted" }, "Nothing outstanding."));
+    for (const i of m.issues) {
+      kids.push(el("div", { class: "issue" }, el("a", { href: blobUrl(i.file, i.line), target: "_blank", rel: "noopener", class: "mono" }, `${i.file.replace(/^cpp\//, "")}:${i.line}`),
+        "  ", KIND_LABEL[i.kind] || i.kind, "  ", el("code", {}, i.detail)));
+    }
+    return el("div", { style: "margin-top:14px" }, kids);
+  };
+  dlg.replaceChildren(
+    el("div", { class: "top" }, el("h2", { class: "mono" }, fn.name), el("button", { onclick: () => dlg.close() }, "Close")),
+    el("div", { class: "sig mono" }, fn.signature),
+    el("div", { class: "muted", style: "margin-top:8px" },
+      fn.defined_in.length ? "Defined: " : "Declared: ",
+      (fn.defined_in.length ? fn.defined_in : fn.declared_in).map((loc) => { const [p, l] = loc.split(/:(?=\d+$)/); return el("a", { href: blobUrl(p, l), target: "_blank", rel: "noopener", class: "mono", style: "margin-right:10px" }, `${p.replace(/^cpp\//, "")}:${l}`); }),
+      fn.defined_in.length && fn.declared_in.length ? el("div", {}, "Declared: ", fn.declared_in.map((loc) => { const [p, l] = loc.split(/:(?=\d+$)/); return el("a", { href: blobUrl(p, l), target: "_blank", rel: "noopener", class: "mono", style: "margin-right:10px" }, `${p.replace(/^cpp\//, "")}:${l}`); })) : null),
+    section("mr"), needsSection(fn), section("buf"));
+  dlg.showModal();
+}
+$("#detail").addEventListener("click", (e) => { if (e.target.id === "detail") e.target.close(); });
+
+/* ---------- PRs tab ---------- */
+function renderPrs() {
+  const prs = DATA.prs.filter((p) => p.functions_improved || p.conflicted_files.length)
+    .sort((a, b) => b.functions_improved - a.functions_improved || a.number - b.number);
+  $("#tab-prs").replaceChildren(
+    el("p", { class: "muted" }, `Open PRs against main that touch scanned sources. Each PR is merged into ${DATA.base.sha.slice(0, 10)} and re-analyzed; a function counts as "in progress" when the merged result is closer to migrated. Files that conflict with the base are not analyzed.`),
+    el("div", { class: "tablewrap" }, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "PR"), el("th", {}, "Title"), el("th", {}, "Functions advanced"), el("th", {}, "Notes"))),
+      el("tbody", {}, prs.map((p) => el("tr", { class: "row", onclick: () => { state.fnPr = String(p.number); state.fnPage = 0; selectTab("functions"); } },
+        el("td", { class: "num" }, el("a", { href: p.url, target: "_blank", rel: "noopener", onclick: (e) => e.stopPropagation() }, `#${p.number}`)),
+        el("td", {}, p.title, " ", el("span", { class: "muted" }, p.author)),
+        el("td", { class: "num" }, fmt(p.functions_improved)),
+        el("td", {}, p.draft ? el("span", { class: "flag" }, "draft") : null,
+          p.conflicted_files.length ? el("span", { class: "flag", title: p.conflicted_files.join("\n") }, `${p.conflicted_files.length} conflicting files skipped`) : null)))))));
+}
+
+/* ---------- notes tab ---------- */
+function renderNotes() {
+  const un = DATA.unattributed_mentions;
+  const byFile = Object.entries(un.by_file).sort((a, b) => b[1].length - a[1].length);
+  $("#tab-notes").replaceChildren(el("div", { class: "notes" },
+    el("h2", {}, "Definitions"),
+    el("ul", {},
+      el("li", {}, el("b", {}, "Unmigrated"), " — memory_resources: takes ", el("code", {}, "rmm::device_async_resource_ref"), " only. device_buffer: references ", el("code", {}, "rmm::device_buffer"), "/", el("code", {}, "device_uvector"), " in its signature or body and has not started using ", el("code", {}, "cuda::device_buffer"), "."),
+      el("li", {}, el("b", {}, "Partially migrated"), " — memory_resources: takes ", el("code", {}, "cudf::memory_resources"), " but passes its mr to a callee that still takes a legacy resource ref, or calls a callee without passing an mr. device_buffer: still references rmm buffer types but also uses ", el("code", {}, "cuda::device_buffer"), ", or calls a repo function that still returns an rmm buffer type."),
+      el("li", {}, el("b", {}, "In progress"), " — unmigrated or partial on the base commit, but an open PR moves it closer to migrated (PR linked in details)."),
+      el("li", {}, el("b", {}, "Migrated"), " — no outstanding issues found."),
+      el("li", {}, el("b", {}, "Not applicable"), " — no memory-resource parameter (memory_resources) / touches no device buffers (device_buffer).")),
+    el("h2", {}, "How it works and what it cannot see"),
+    el("ul", {},
+      el("li", {}, "Functions are found by a scope-aware scan of the source (no build needed). Declarations in headers, explicit instantiations and definitions are merged into one function; its status comes from the definition when there is one."),
+      el("li", {}, "Callees are resolved by C++ name-lookup order and argument count, not full overload resolution or ADL; method calls through ", el("code", {}, "."), "/", el("code", {}, "->"), " are not resolved. Every flagged call is listed with its line so it can be checked."),
+      el("li", {}, "Only one level of callee is considered: a function is flagged when its direct callee has not migrated, not when something deeper has not."),
+      el("li", {}, "Functions with no mr parameter that call ", el("code", {}, "get_current_device_resource_ref()"), " (or leave a callee's mr at its default) are flagged as needing a new mr parameter, separately from the status above. A PR that gives such a function a ", el("code", {}, "cudf::memory_resources"), " parameter counts as addressing it."),
+      el("li", {}, "Not detected: temporaries allocated from ", el("code", {}, "mr.get_output_mr()"), " instead of ", el("code", {}, "mr.as_temporary()"), ", and allocations that rely on rmm's implicit default resource (for example ", el("code", {}, "rmm::device_uvector<T>(n, stream)"), ")."),
+      el("li", {}, "Class data members and other non-function mentions are not statuses; see below.")),
+    el("h2", {}, `Mentions outside any function (${fmt(un.count)})`),
+    el("p", { class: "muted" }, un.note),
+    byFile.map(([path, items]) => el("details", {}, el("summary", {}, el("span", { class: "mono" }, path), ` (${items.length})`),
+      items.map(([line, tok]) => el("div", {}, el("a", { href: blobUrl(path, line), target: "_blank", rel: "noopener", class: "mono" }, `:${line}`), "  ", el("code", {}, tok)))))));
+}
+
+/* ---------- boot ---------- */
+function selectTab(name) {
+  state.tab = name;
+  document.querySelectorAll("nav.tabs button").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === name));
+  for (const t of ["files", "functions", "prs", "notes"]) $("#tab-" + t).hidden = t !== name;
+  if (name === "functions") renderFunctions();
+}
+document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("click", () => selectTab(b.dataset.tab)));
+$("#theme").addEventListener("click", () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  root.dataset.theme = dark ? "light" : "dark";
+});
+$("#meta").textContent = `${DATA.base.ref} @ ${DATA.base.sha.slice(0, 10)} · generated ${DATA.generated_at.slice(0, 16).replace("T", " ")} UTC · ${fmt(DATA.functions.length)} functions in ${fmt(DATA.files.length)} files · ${DATA.prs.length} open PRs analyzed`;
+renderCards(); renderFiles(); renderPrs(); renderNotes();
+</script>
+</body>
+</html>
