@@ -30,13 +30,14 @@ jobs:
       - run: python -m pytest -q
       - name: Fetch cuDF history
         if: github.event_name != 'pull_request'
-        run: git clone --filter=blob:none --no-checkout https://github.com/NVIDIA/cudf.git cudf
+        run: git clone --no-checkout https://github.com/NVIDIA/cudf.git cudf
       - name: Generate dashboard and migration batches
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python migration_status.py --repo cudf --base-ref origin/main --output-dir site
+          python -c "import json; r = json.load(open('site/migration_status.json')); assert r['prs'], 'No PR overlays analyzed; refusing to publish'"
           python plan_batches.py --report site/migration_status.json
           cp site/migration_status.html site/index.html
       - uses: actions/upload-pages-artifact@v3

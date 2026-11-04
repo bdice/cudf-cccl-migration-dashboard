@@ -16,7 +16,7 @@ for open-PR analysis. No CUDA toolkit or cuDF build is needed.
 ```bash
 git clone https://github.com/bdice/cudf-cccl-migration-dashboard.git
 cd cudf-cccl-migration-dashboard
-git clone --filter=blob:none --no-checkout https://github.com/NVIDIA/cudf.git cudf
+git clone --no-checkout https://github.com/NVIDIA/cudf.git cudf
 gh auth login
 python3 migration_status.py --repo cudf --base-ref origin/main --output-dir site
 python3 plan_batches.py --report site/migration_status.json
